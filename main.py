@@ -6,7 +6,7 @@ from machine import Pin, I2C, ADC, UART, WDT
 from ota_updater import OTAUpdater
 
 # --- VERSION & REMOTE OTA CONFIGURATION ---
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.1.1"
 RAW_GITHUB_URL = "https://raw.githubusercontent.com/bcpocketrocket-cell/weather-station/main"
 
 # --- HARDWARE WATCHDOG TIMER (8-second max limit on Pico W) ---
@@ -165,9 +165,10 @@ def read_pzem017(slave_addr=0x01):
             
     return None, None, None, None
 
-def get_current_timestamp():
+def get_current_timestamp(version_str):
     t = utime.localtime()
-    return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(t[0], t[1], t[2], t[3], t[4], t[5])
+    date_str = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(t[0], t[1], t[2], t[3], t[4], t[5])
+    return date_str + " (v" + version_str + ")"
 
 # --- CORE 1 TASK (Rain Gauge & Anemometer Pulses) ---
 def core1_task():
@@ -243,7 +244,7 @@ while True:
         # 4. Read Solar Telemetry from PZEM-017 (returns None if unpopulated)
         batt_v, batt_i, batt_p, batt_e = read_pzem017()
 
-        timestamp_str = get_current_timestamp()
+        timestamp_str = get_current_timestamp(CURRENT_VERSION)
 
         print("Timestamp:", timestamp_str)
         print("Indoor Temp:", IndoorTemp, "°C | Outdoor Temp:", OutdoorTemp, "°C")
@@ -265,7 +266,7 @@ while True:
                 'field5': compassDir,
                 'field6': rainfall,
                 'field7': OutdoorTemp,
-                'field8': timestamp_str
+                'field8': timestamp_str  # e.g., "2026-10-16 12:10:00 (v1.1.0)"
             }
 
             try:
