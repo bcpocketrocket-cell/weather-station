@@ -9,7 +9,7 @@ from ota_updater import OTAUpdater
 CURRENT_VERSION = "1.1.0"
 RAW_GITHUB_URL = "https://raw.githubusercontent.com/bcpocketrocket-cell/weather-station/main"
 
-# --- HARDWARE WATCHDOG TIMER (8-second timeout limit on Pico W) ---
+# --- HARDWARE WATCHDOG TIMER (8-second max limit on Pico W) ---
 wdt = WDT(timeout=8000)
 wdt.feed()
 
@@ -24,11 +24,11 @@ password = 'Satellite1!'
 # --- THINGSPEAK API KEYS & URLS ---
 HTTP_HEADERS = {'Content-Type': 'application/json'}
 
-# Weather Channel
+# Channel 1: Primary Weather Channel
 WEATHER_WRITE_API_KEY = 'XWRBLMWRW22O36AY'
 WEATHER_URL = 'http://api.thingspeak.com/update?api_key=' + WEATHER_WRITE_API_KEY
 
-# Solar / Power Channel (Populate when Channel 2 is created)
+# Channel 2: Solar & Power Telemetry Channel
 SOLAR_WRITE_API_KEY = 'QGGKJYUG8MFJRG73'
 SOLAR_URL = 'http://api.thingspeak.com/update?api_key=' + SOLAR_WRITE_API_KEY
 
@@ -125,7 +125,7 @@ def calculate_wind_direction():
 # --- RS485 & PZEM-017 SOLAR MONITOR SETUP ---
 uart = UART(1, baudrate=9600, tx=Pin(4), rx=Pin(5), bits=8, parity=None, stop=2)
 de_pin = Pin(6, Pin.OUT)
-de_pin.value(0) # Default to Receive Mode
+de_pin.value(0) # Default to RX Mode
 
 def calculate_crc(data):
     crc = 0xFFFF
@@ -213,17 +213,25 @@ while True:
     spLock.acquire()
 
     try:
-        # 1. Read DS18B20 Indoor Temp
-        sensor.convert_temp()
-        IndoorTemp = round(sensor.read_temp(roms[0]), 1)
+        # 1. DS18B20 Indoor Temp (with error handling)
+        IndoorTemp = 0.0
+        try:
+            sensor.convert_temp()
+            IndoorTemp = round(sensor.read_temp(roms[0]), 1)
+        except Exception as e_ds:
+            print("DS18B20 Read Error:", e_ds)
 
-        # 2. Read BME280 Atmospheric Data
-        bme_data = bme.read_compensated_data()
-        humidity = bme_data[2] / 1024
-        pressure = (bme_data[1] // 256) / 1000
-        OutdoorTemp = bme_data[0] / 100
+        # 2. BME280 Environmental Data (with error handling)
+        humidity, pressure, OutdoorTemp = 0.0, 0.0, 0.0
+        try:
+            bme_data = bme.read_compensated_data()
+            humidity = round(bme_data[2] / 1024, 1)
+            pressure = round((bme_data[1] // 256) / 1000, 2)
+            OutdoorTemp = round(bme_data[0] / 100, 1)
+        except Exception as e_bme:
+            print("BME280 Read Error:", e_bme)
 
-        # 3. Read Wind & Rain Sensors
+        # 3. Wind & Rain
         windHeading = calculate_wind_direction()
         compassDir = compass_direction()
         measuredWind = (windCount / 15) * 2.4
@@ -232,7 +240,7 @@ while True:
         rainfall = rainCount * 0.2794
         rainCount = 0
 
-        # 4. Read Solar Telemetry from PZEM-017
+        # 4. Read Solar Telemetry from PZEM-017 (returns None if unpopulated)
         batt_v, batt_i, batt_p, batt_e = read_pzem017()
 
         timestamp_str = get_current_timestamp()
@@ -263,11 +271,11 @@ while True:
             try:
                 req_w = urequests.post(WEATHER_URL, json=weather_payload, headers=HTTP_HEADERS)
                 req_w.close()
-                print("Weather channel updated.")
+                print("Weather channel updated successfully.")
             except Exception as ew:
                 print("Failed to update weather channel:", ew)
 
-            # Post Channel 2: Solar & Power Telemetry
+            # Post Channel 2: Solar & Power Telemetry (ONLY if hardware reads valid values)
             if batt_v is not None and SOLAR_WRITE_API_KEY != 'YOUR_SOLAR_WRITE_API_KEY':
                 solar_payload = {
                     'field1': batt_v,
@@ -278,12 +286,12 @@ while True:
                 try:
                     req_s = urequests.post(SOLAR_URL, json=solar_payload, headers=HTTP_HEADERS)
                     req_s.close()
-                    print("Solar channel updated.")
+                    print("Solar channel updated successfully.")
                 except Exception as es:
                     print("Failed to update solar channel:", es)
 
     except Exception as e:
-        print("Error in main loop execution:", e)
+        print("Critical error in main loop execution:", e)
 
     led.value(1)
     utime.sleep(1)
@@ -294,5 +302,4 @@ while True:
     if loop_count >= 1440:
         print("24 hours elapsed. Resetting board to perform scheduled OTA update check...")
         utime.sleep(1)
-        machine.reset() # Soft/Hard reboot triggers boot-time OTA check
-  
+        machine.reset()
