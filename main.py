@@ -29,7 +29,7 @@ WEATHER_WRITE_API_KEY = 'XWRBLMWRW22O36AY'
 WEATHER_URL = 'http://api.thingspeak.com/update?api_key=' + WEATHER_WRITE_API_KEY
 
 # Solar / Power Channel (Populate when Channel 2 is created)
-SOLAR_WRITE_API_KEY = 'YOUR_SOLAR_WRITE_API_KEY'
+SOLAR_WRITE_API_KEY = 'QGGKJYUG8MFJRG73'
 SOLAR_URL = 'http://api.thingspeak.com/update?api_key=' + SOLAR_WRITE_API_KEY
 
 # Global Rain & Wind Counters (Core 1)
